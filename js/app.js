@@ -1,7 +1,7 @@
 // app.js - 主要頁面邏輯:分頁切換、表格顯示/編輯、密碼保護、儲存回 Drive
 (function () {
   const CFG = window.APP_CONFIG;
-  const STATUS_OPTIONS = ['已排定', '暫定', '待安排'];
+  const STATUS_OPTIONS = ['已排定', '暫定', '待安排', '未進行', '完工'];
 
   let originalBytes = null;
   let rows = []; // { row, item, start, end, duration, status, hw, sw, note }
@@ -84,7 +84,7 @@
     ganttEndInput.value = Gantt.toISO(ganttRange.end);
   }
   function renderGantt() {
-    Gantt.render(rows, ganttRange);
+    Gantt.render(rows.filter((r) => r.status !== '完工'), ganttRange);
   }
   ganttStartInput.addEventListener('change', () => {
     if (!ganttStartInput.value) return;
@@ -160,8 +160,10 @@
 
   function renderTable() {
     recordList().innerHTML = '';
-    emptyState.hidden = rows.length > 0;
-    rows.forEach((row, idx) => {
+    // 檢視模式下,狀態為「完工」的項目不顯示;編輯模式仍會列出,方便修改/改回其他狀態
+    const visibleRows = editMode ? rows : rows.filter((r) => r.status !== '完工');
+    emptyState.hidden = visibleRows.length > 0;
+    visibleRows.forEach((row, idx) => {
       recordList().appendChild(editMode ? renderEditCard(row, idx) : renderViewCard(row));
     });
     addRowBtn.style.display = editMode && rows.length < (CFG.MAX_ROW - CFG.MIN_ROW + 1) ? 'inline-flex' : 'none';
@@ -211,7 +213,10 @@
         </div>
         <div class="field">
           <span class="field-label">狀態</span>
-          <input type="text" list="statusOptions" data-f="status" value="${escapeAttr(row.status)}" placeholder="已排定 / 暫定 / 待安排">
+          <select data-f="status">
+            <option value=""${row.status ? '' : ' selected'}>(未設定)</option>
+            ${STATUS_OPTIONS.map((s) => `<option value="${s}"${row.status === s ? ' selected' : ''}>${s}</option>`).join('')}
+          </select>
         </div>
         <div class="field">
           <span class="field-label">硬體作業人員</span>
@@ -240,6 +245,11 @@
         }
       });
     });
+    card.querySelectorAll('select[data-f]').forEach((select) => {
+      select.addEventListener('change', () => {
+        row[select.dataset.f] = select.value;
+      });
+    });
     card.querySelector('[data-act="clear"]').addEventListener('click', () => {
       Object.assign(row, { item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '' });
       renderTable();
@@ -253,18 +263,6 @@
   function escapeAttr(str) {
     return escapeHtml(str).replace(/"/g, '&quot;');
   }
-
-  // datalist for 狀態
-  (function addStatusDatalist() {
-    const dl = document.createElement('datalist');
-    dl.id = 'statusOptions';
-    STATUS_OPTIONS.forEach((s) => {
-      const opt = document.createElement('option');
-      opt.value = s;
-      dl.appendChild(opt);
-    });
-    document.body.appendChild(dl);
-  })();
 
   // ---------- 編輯模式 / 密碼 ----------
 
