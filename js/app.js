@@ -103,7 +103,27 @@
     syncGanttInputs();
     renderGantt();
   });
+  el('ganttTwoMonthBtn').addEventListener('click', () => {
+    ganttRange = Gantt.defaultRange();
+    syncGanttInputs();
+    renderGantt();
+  });
   syncGanttInputs();
+
+  const ganttRefreshBtn = el('ganttRefreshBtn');
+  ganttRefreshBtn.addEventListener('click', async () => {
+    if (editMode && !confirm('目前正在編輯中,更新資料會放棄未儲存的變更,確定要繼續嗎?')) return;
+    ganttRefreshBtn.disabled = true;
+    const original = ganttRefreshBtn.innerHTML;
+    ganttRefreshBtn.innerHTML = '<span class="spinner"></span> 更新中…';
+    try {
+      const ok = await loadData();
+      if (ok) toast('資料已更新');
+    } finally {
+      ganttRefreshBtn.innerHTML = original;
+      ganttRefreshBtn.disabled = false;
+    }
+  });
 
   window.addEventListener('resize', () => {
     clearTimeout(window._ganttResizeT);
@@ -123,10 +143,12 @@
       renderGantt();
       const now = new Date();
       statusLine.textContent = `共 ${rows.length} 筆・更新於 ${now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`;
+      return true;
     } catch (err) {
       console.error(err);
       statusLine.textContent = '載入失敗';
       toast('載入資料失敗:' + err.message, true);
+      return false;
     }
   }
 

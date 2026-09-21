@@ -69,11 +69,27 @@
     return el;
   }
 
+  // 明細視窗(黑底 tooltip)以「點擊」開關:再次點擊同一長條、點擊其他長條、
+  // 或點擊圖表以外區域都會關閉,取代原本只能 hover 顯示但無法關閉的行為。
+  let openBarEl = null;
+  function hideTooltip() {
+    const tooltip = document.getElementById('ganttTooltip');
+    if (tooltip) tooltip.style.opacity = '0';
+    openBarEl = null;
+  }
+  if (!window.__ganttOutsideTapBound) {
+    document.addEventListener('click', (evt) => {
+      if (openBarEl && !evt.target.closest('.gantt-bar')) hideTooltip();
+    });
+    window.__ganttOutsideTapBound = true;
+  }
+
   function render(rows, range) {
     const labelsEl = document.getElementById('ganttLabels');
     const svg = document.getElementById('ganttSvg');
     const scrollEl = document.querySelector('.gantt-scroll');
     const tooltip = document.getElementById('ganttTooltip');
+    hideTooltip();
     labelsEl.innerHTML = '';
     svg.innerHTML = '';
 
@@ -189,13 +205,14 @@
         tooltip.style.left = Math.min(cx + 12, window.innerWidth - 250) + 'px';
         tooltip.style.top = Math.max(cy - 40, 8) + 'px';
         tooltip.style.opacity = '1';
+        openBarEl = rect;
       };
-      const hideTip = () => { tooltip.style.opacity = '0'; };
 
-      rect.addEventListener('mouseenter', showTip);
-      rect.addEventListener('mousemove', showTip);
-      rect.addEventListener('mouseleave', hideTip);
-      rect.addEventListener('touchstart', (e) => { showTip(e); }, { passive: true });
+      rect.addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        if (openBarEl === rect) hideTooltip();
+        else showTip(evt);
+      });
     });
   }
 
