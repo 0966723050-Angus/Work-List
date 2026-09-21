@@ -390,16 +390,19 @@ main {
   background: var(--color-text);
   color: var(--color-bg);
   padding: 10px 18px;
-  border-radius: 999px;
+  border-radius: 14px;
   font-size: 13px;
+  line-height: 1.4;
   z-index: 200;
   opacity: 0;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   transition: opacity .2s ease, bottom .2s ease;
-  white-space: nowrap;
-  max-width: 90vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre-wrap;
+  text-align: left;
+  width: max-content;
+  max-width: min(90vw, 360px);
+  word-break: break-word;
 }
 .toast.show { opacity: 1; bottom: 100px; }
 

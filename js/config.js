@@ -11,6 +11,10 @@ window.APP_CONFIG = {
   // 用於「編輯後儲存」時取得具寫入權限的存取權杖
   GOOGLE_CLIENT_ID: '873968217418-q5t3i90e4pf04kbd4l6vbpjib13etb7o.apps.googleusercontent.com',
 
+  // Google Cloud 專案編號(Google Picker 需要用它把「透過 Picker 選取的檔案」正確
+  // 登記為此應用程式已取得授權的檔案,否則後續 Drive API 呼叫可能出現 404)
+  GOOGLE_PROJECT_NUMBER: '873968217418',
+
   // API 金鑰(僅用於唯讀下載檔案內容,已限制只能從本網站網域呼叫 Drive API)
   GOOGLE_API_KEY: 'AIzaSyA4nUgF4lT_6hOgYKXqAjXMsRd0vCdBJiM',
 

@@ -65,6 +65,7 @@
       const picker = new google.picker.PickerBuilder()
         .setOAuthToken(accessToken)
         .setDeveloperKey(CFG.GOOGLE_API_KEY)
+        .setAppId(CFG.GOOGLE_PROJECT_NUMBER)
         .addView(view)
         .setTitle('請選擇「Work List.xlsm」以授權儲存')
         .setCallback((data) => {

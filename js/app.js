@@ -25,8 +25,12 @@
     toastEl.style.background = isError ? 'var(--color-danger)' : 'var(--color-text)';
     toastEl.classList.add('show');
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => toastEl.classList.remove('show'), 3200);
+    toast._t = setTimeout(() => toastEl.classList.remove('show'), isError ? 8000 : 3200);
   }
+  toastEl.addEventListener('click', () => {
+    clearTimeout(toast._t);
+    toastEl.classList.remove('show');
+  });
 
   async function sha256Hex(text) {
     const buf = new TextEncoder().encode(text);
@@ -346,6 +350,7 @@
     } catch (err) {
       console.error(err);
       toast('儲存失敗:' + err.message, true);
+      DriveAuth.resetAuth(); // 重試時強制重新登入 + 重新選檔,避免沿用可能有問題的授權狀態
     } finally {
       saving = false;
       saveFab.innerHTML = originalLabel;
