@@ -65,8 +65,51 @@
       document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
       el(`page-${btn.dataset.page}`).classList.add('active');
-      if (btn.dataset.page === 'chart') Gantt.render(rows);
+      if (btn.dataset.page === 'chart') renderGantt();
     });
+  });
+
+  // ---------- 甘特圖日期範圍 ----------
+
+  let ganttRange = Gantt.defaultRange();
+  const ganttStartInput = el('ganttStart');
+  const ganttEndInput = el('ganttEnd');
+
+  function syncGanttInputs() {
+    ganttStartInput.value = Gantt.toISO(ganttRange.start);
+    ganttEndInput.value = Gantt.toISO(ganttRange.end);
+  }
+  function renderGantt() {
+    Gantt.render(rows, ganttRange);
+  }
+  ganttStartInput.addEventListener('change', () => {
+    if (!ganttStartInput.value) return;
+    const newStart = Gantt.parseISO(ganttStartInput.value);
+    if (newStart > ganttRange.end) ganttRange.end = newStart;
+    ganttRange.start = newStart;
+    syncGanttInputs();
+    renderGantt();
+  });
+  ganttEndInput.addEventListener('change', () => {
+    if (!ganttEndInput.value) return;
+    const newEnd = Gantt.parseISO(ganttEndInput.value);
+    if (newEnd < ganttRange.start) ganttRange.start = newEnd;
+    ganttRange.end = newEnd;
+    syncGanttInputs();
+    renderGantt();
+  });
+  el('ganttThisWeekBtn').addEventListener('click', () => {
+    ganttRange = Gantt.defaultRange();
+    syncGanttInputs();
+    renderGantt();
+  });
+  syncGanttInputs();
+
+  window.addEventListener('resize', () => {
+    clearTimeout(window._ganttResizeT);
+    window._ganttResizeT = setTimeout(() => {
+      if (el('page-chart').classList.contains('active')) renderGantt();
+    }, 200);
   });
 
   // ---------- 資料載入 ----------
@@ -77,7 +120,7 @@
       originalBytes = await XlsxIO.fetchWorkbookBytes();
       rows = XlsxIO.parseRows(originalBytes);
       renderTable();
-      Gantt.render(rows);
+      renderGantt();
       const now = new Date();
       statusLine.textContent = `共 ${rows.length} 筆・更新於 ${now.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`;
     } catch (err) {
@@ -277,7 +320,7 @@
       rows = XlsxIO.parseRows(patchedBytes);
       toast('已成功儲存至 Google Drive');
       exitEditMode();
-      Gantt.render(rows);
+      renderGantt();
     } catch (err) {
       console.error(err);
       toast('儲存失敗:' + err.message, true);

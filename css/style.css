@@ -257,6 +257,29 @@ main {
 }
 .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend-dot { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+.gantt-range-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.gantt-range-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.gantt-range-bar input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: inherit;
+}
 .gantt-wrap {
   display: flex;
   background: var(--color-surface);
@@ -266,22 +289,24 @@ main {
   overflow: hidden;
 }
 .gantt-labels {
-  flex: 0 0 128px;
-  width: 128px;
+  flex: 0 0 132px;
+  width: 132px;
   border-right: 1px solid var(--color-border);
-  padding-top: 32px;
+  padding-top: 40px;
   overflow: hidden;
 }
 .gantt-labels .glabel {
-  height: 36px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  font-size: 12px;
-  white-space: nowrap;
+  height: 48px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.25;
   border-bottom: 1px solid transparent;
+  box-sizing: border-box;
 }
 .gantt-scroll {
   flex: 1 1 auto;

@@ -17,7 +17,7 @@
   </header>
 
   <nav class="tab-bar">
-    <button class="tab-btn active" data-page="table">表格數據</button>
+    <button class="tab-btn active" data-page="table">工作項目</button>
     <button class="tab-btn" data-page="chart">甘特圖</button>
   </nav>
 
@@ -40,6 +40,15 @@
         <span><i class="legend-dot" style="background:var(--color-status-confirmed)"></i>已確定</span>
         <span><i class="legend-dot" style="background:var(--color-status-tentative)"></i>暫定</span>
         <span><i class="legend-dot" style="background:var(--color-status-pending)"></i>待安排/其他</span>
+      </div>
+      <div class="gantt-range-bar">
+        <label>開始日期
+          <input type="date" id="ganttStart">
+        </label>
+        <label>結束日期
+          <input type="date" id="ganttEnd">
+        </label>
+        <button id="ganttThisWeekBtn" class="btn btn-ghost btn-sm" type="button">本週</button>
       </div>
       <div class="gantt-wrap">
         <div id="ganttLabels" class="gantt-labels"></div>
