@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="42" fill="#0b5fff"/>
+  <rect x="38" y="42" width="86" height="15" rx="7.5" fill="#ffffff"/>
+  <rect x="38" y="73" width="116" height="15" rx="7.5" fill="#ffffff"/>
+  <rect x="38" y="104" width="62" height="15" rx="7.5" fill="#ffffff"/>
+  <text x="96" y="158" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#ffffff" text-anchor="middle">ATK</text>
+</svg>
