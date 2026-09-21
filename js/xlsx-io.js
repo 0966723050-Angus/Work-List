@@ -267,7 +267,7 @@
   }
 
   async function uploadWorkbook(bytes, accessToken) {
-    const url = `https://www.googleapis.com/upload/drive/v3/files/${CFG.DRIVE_FILE_ID}?uploadType=media`;
+    const url = `https://www.googleapis.com/upload/drive/v3/files/${CFG.DRIVE_FILE_ID}?uploadType=media&supportsAllDrives=true`;
     const resp = await fetch(url, {
       method: 'PATCH',
       headers: {
