@@ -99,7 +99,7 @@
     renderGantt();
   });
   el('ganttThisWeekBtn').addEventListener('click', () => {
-    ganttRange = Gantt.defaultRange();
+    ganttRange = Gantt.currentWeekRange();
     syncGanttInputs();
     renderGantt();
   });

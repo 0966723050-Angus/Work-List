@@ -46,9 +46,21 @@
     const t = new Date();
     return new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
   }
-  function defaultRange() {
+  function addMonthsUTC(date, n) {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + n, date.getUTCDate()));
+  }
+  // 本週(週一~週日,共7欄)
+  function currentWeekRange() {
     const monday = mondayOfWeek(todayUTC());
     return { start: monday, end: addDays(monday, 6) };
+  }
+  // 預設檢視範圍:從本週一起算,往後推 2 個月,並補到當週週日,
+  // 確保整個範圍都是完整的週一~週日(每週 7 欄)
+  function defaultRange() {
+    const monday = mondayOfWeek(todayUTC());
+    const roughEnd = addMonthsUTC(monday, 2);
+    const end = addDays(roughEnd, 6 - mondayIndex(roughEnd));
+    return { start: monday, end };
   }
 
   function svgEl(tag, attrs) {
@@ -194,5 +206,5 @@
       .replace(/>/g, '&gt;');
   }
 
-  window.Gantt = { render, defaultRange, mondayOfWeek, todayUTC, toISO, parseISO, addDays };
+  window.Gantt = { render, defaultRange, currentWeekRange, mondayOfWeek, todayUTC, toISO, parseISO, addDays };
 })();
