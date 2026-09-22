@@ -3,12 +3,12 @@
 // 工作項目欄隨內容縱向捲動但橫向固定,只有右下角圖表本體會上下左右捲動,
 // 讓橫向捲軸永遠留在固定高度的框框底部。
 (function () {
-  const ROW_H = 48;
+  const ROW_H = 34;
   const HEADER_H = 40;
   const BASE_DAY_W = 40; // 縮放 1x 時,自動塞滿容器寬度的參考基準(下限)
   const ABS_MIN_DAY_W = 18;
   const ABS_MAX_DAY_W = 160;
-  const BAR_H = 22;
+  const BAR_H = 16;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
