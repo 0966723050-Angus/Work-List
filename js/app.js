@@ -61,6 +61,17 @@
     }
   }
 
+  // 依計畫開始時間由近到遠排序;尚未設定日期的項目一律排到最後,
+  // 日期相同或都未設定時維持原本的相對順序(穩定排序)
+  function sortRowsByStartDate(list) {
+    list.sort((a, b) => {
+      if (!a.start && !b.start) return 0;
+      if (!a.start) return 1;
+      if (!b.start) return -1;
+      return a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
+    });
+  }
+
   // ---------- 漢堡選單 / 分頁切換 ----------
 
   const menuBtn = el('menuBtn');
@@ -352,6 +363,8 @@
       return;
     }
     rows.push({ row: nextRowNum, item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '' });
+    // 新項目尚未設定日期,穩定排序後仍會落在所有未設定日期項目的最後面
+    sortRowsByStartDate(rows);
     renderTable();
     recordList().lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -366,6 +379,10 @@
     saveFab.disabled = true;
     try {
       const cleanRows = rows.filter((r) => (r.item && r.item.trim()) || r.status || r.start || r.end);
+      sortRowsByStartDate(cleanRows);
+      // 依排序後的順序,重新指定實際要寫入的 Excel 列號,讓排序結果在存檔、
+      // 重新整理後仍然維持(否則下次讀取又會照 Excel 原本的實體列順序顯示)
+      cleanRows.forEach((r, i) => { r.row = CFG.MIN_ROW + i; });
       const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows);
       const token = await DriveAuth.ensureWriteAccess();
       await XlsxIO.uploadWorkbook(patchedBytes, token);
