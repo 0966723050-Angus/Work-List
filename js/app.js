@@ -61,31 +61,60 @@
     }
   }
 
-  // ---------- 分頁切換 ----------
+  // ---------- 漢堡選單 / 分頁切換 ----------
 
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
+  const menuBtn = el('menuBtn');
+  const sideDrawer = el('sideDrawer');
+  const drawerBackdrop = el('drawerBackdrop');
+
+  function openDrawer() {
+    sideDrawer.classList.add('open');
+    drawerBackdrop.hidden = false;
+  }
+  function closeDrawer() {
+    sideDrawer.classList.remove('open');
+    drawerBackdrop.hidden = true;
+  }
+  menuBtn.addEventListener('click', openDrawer);
+  drawerBackdrop.addEventListener('click', closeDrawer);
+
+  document.querySelectorAll('.drawer-item').forEach((btn) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.drawer-item').forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
       el(`page-${btn.dataset.page}`).classList.add('active');
       if (btn.dataset.page === 'chart') renderGantt();
+      closeDrawer();
     });
   });
 
-  // ---------- 甘特圖日期範圍 ----------
+  // ---------- 甘特圖日期範圍 / 縮放 ----------
 
   let ganttRange = Gantt.defaultRange();
+  let ganttZoomIndex = Gantt.DEFAULT_ZOOM_INDEX;
   const ganttStartInput = el('ganttStart');
   const ganttEndInput = el('ganttEnd');
+  const ganttZoomInBtn = el('ganttZoomInBtn');
+  const ganttZoomOutBtn = el('ganttZoomOutBtn');
 
   function syncGanttInputs() {
     ganttStartInput.value = Gantt.toISO(ganttRange.start);
     ganttEndInput.value = Gantt.toISO(ganttRange.end);
   }
   function renderGantt() {
-    Gantt.render(rows.filter((r) => r.status !== '完工'), ganttRange);
+    Gantt.render(rows.filter((r) => r.status !== '完工'), ganttRange, ganttZoomIndex);
+    ganttZoomOutBtn.disabled = ganttZoomIndex <= 0;
+    ganttZoomInBtn.disabled = ganttZoomIndex >= Gantt.ZOOM_STEPS.length - 1;
   }
+  ganttZoomInBtn.addEventListener('click', () => {
+    ganttZoomIndex = Math.min(Gantt.ZOOM_STEPS.length - 1, ganttZoomIndex + 1);
+    renderGantt();
+  });
+  ganttZoomOutBtn.addEventListener('click', () => {
+    ganttZoomIndex = Math.max(0, ganttZoomIndex - 1);
+    renderGantt();
+  });
   ganttStartInput.addEventListener('change', () => {
     if (!ganttStartInput.value) return;
     const newStart = Gantt.parseISO(ganttStartInput.value);

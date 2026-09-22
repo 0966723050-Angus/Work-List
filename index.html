@@ -13,12 +13,14 @@
 </head>
 <body>
   <header class="app-header">
+    <button id="menuBtn" class="menu-btn" type="button" aria-label="選單">☰</button>
     <h1>ATK近期工作項目</h1>
   </header>
 
-  <nav class="tab-bar">
-    <button class="tab-btn active" data-page="table">工作項目</button>
-    <button class="tab-btn" data-page="chart">甘特圖</button>
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+  <nav id="sideDrawer" class="side-drawer">
+    <button class="drawer-item active" data-page="table" type="button">📋 工作項目</button>
+    <button class="drawer-item" data-page="chart" type="button">📊 甘特圖</button>
   </nav>
 
   <button id="editFab" class="btn btn-primary fab-edit">✎ 編輯</button>
@@ -51,8 +53,16 @@
         <button id="ganttThisWeekBtn" class="btn btn-ghost btn-sm" type="button">本週</button>
         <button id="ganttTwoMonthBtn" class="btn btn-ghost btn-sm" type="button">雙月</button>
         <button id="ganttRefreshBtn" class="btn btn-ghost btn-sm" type="button">🔄 更新資料</button>
+        <span class="zoom-group">
+          <button id="ganttZoomOutBtn" class="btn btn-ghost btn-sm" type="button" aria-label="縮小">－</button>
+          <button id="ganttZoomInBtn" class="btn btn-ghost btn-sm" type="button" aria-label="放大">＋</button>
+        </span>
       </div>
       <div class="gantt-wrap">
+        <div class="gantt-corner"></div>
+        <div class="gantt-header-scroll">
+          <svg id="ganttHeaderSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
         <div id="ganttLabels" class="gantt-labels"></div>
         <div class="gantt-scroll">
           <svg id="ganttSvg" xmlns="http://www.w3.org/2000/svg"></svg>
