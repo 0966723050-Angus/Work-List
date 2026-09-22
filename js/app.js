@@ -183,6 +183,7 @@
     try {
       originalBytes = await XlsxIO.fetchWorkbookBytes();
       rows = XlsxIO.parseRows(originalBytes);
+      sortRowsByStartDate(rows); // 一律依開始日期由近到遠顯示,不受 Excel 實體列順序影響
       renderTable();
       renderGantt();
       const now = new Date();
@@ -388,6 +389,7 @@
       await XlsxIO.uploadWorkbook(patchedBytes, token);
       originalBytes = patchedBytes;
       rows = XlsxIO.parseRows(patchedBytes);
+      sortRowsByStartDate(rows);
       toast('已成功儲存至 Google Drive');
       exitEditMode();
       renderGantt();
