@@ -16,7 +16,8 @@ window.APP_CONFIG = {
   GOOGLE_PROJECT_NUMBER: '873968217418',
 
   // API 金鑰(僅用於唯讀下載檔案內容,已限制只能從本網站網域呼叫 Drive API)
-  GOOGLE_API_KEY: 'AIzaSyA4nUgF4lT_6hOgYKXqAjXMsRd0vCdBJiM',
+  // 2026-09 因 GitGuardian 偵測公開回報而輪替過一次(舊金鑰已於 Google Cloud Console 刪除失效)
+  GOOGLE_API_KEY: 'AIzaSyAa85YaBD_iSnXQuA5qmD3zR4-w_Jw1HT0',
 
   // 寫入 Drive 所需的權限範圍(僅存取此 App 建立/開啟過的檔案,不會讀取使用者整個雲端硬碟)
   DRIVE_SCOPE: 'https://www.googleapis.com/auth/drive.file',
