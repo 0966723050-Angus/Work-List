@@ -41,12 +41,14 @@
 
   // ---------- 讀取 ----------
 
-  async function fetchWorkbookBytes() {
-    const url = `https://www.googleapis.com/drive/v3/files/${CFG.DRIVE_FILE_ID}?alt=media&key=${CFG.GOOGLE_API_KEY}`;
-    const resp = await fetch(url);
+  async function fetchWorkbookBytes(accessToken) {
+    const url = `https://www.googleapis.com/drive/v3/files/${CFG.DRIVE_FILE_ID}?alt=media`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      throw new Error(`下載檔案失敗 (${resp.status}): ${text.slice(0, 200)}`);
+      const err = new Error(`下載檔案失敗 (${resp.status}): ${text.slice(0, 200)}`);
+      err.status = resp.status;
+      throw err;
     }
     return await resp.arrayBuffer();
   }
@@ -278,7 +280,9 @@
     });
     if (!resp.ok) {
       const text = await resp.text().catch(() => '');
-      throw new Error(`上傳失敗 (${resp.status}): ${text.slice(0, 300)}`);
+      const err = new Error(`上傳失敗 (${resp.status}): ${text.slice(0, 300)}`);
+      err.status = resp.status;
+      throw err;
     }
     return await resp.json();
   }

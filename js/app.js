@@ -32,6 +32,35 @@
     toastEl.classList.remove('show');
   });
 
+  // ---------- 登入門檻 ----------
+
+  const loginGate = el('loginGate');
+  const loginBtn = el('loginBtn');
+  const loginError = el('loginError');
+
+  function showLoginGate(message) {
+    loginError.textContent = message || '';
+    loginGate.hidden = false;
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    loginBtn.disabled = true;
+    loginError.textContent = '';
+    const originalLabel = loginBtn.innerHTML;
+    loginBtn.innerHTML = '<span class="spinner"></span> 登入中…';
+    try {
+      await DriveAuth.ensureAccessToken();
+      loginGate.hidden = true;
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      loginError.textContent = '登入失敗:' + err.message;
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = originalLabel;
+    }
+  });
+
   async function sha256Hex(text) {
     const buf = new TextEncoder().encode(text);
     const digest = await crypto.subtle.digest('SHA-256', buf);
@@ -181,7 +210,8 @@
   async function loadData() {
     statusLine.textContent = '載入中…';
     try {
-      originalBytes = await XlsxIO.fetchWorkbookBytes();
+      const token = await DriveAuth.ensureAccessToken();
+      originalBytes = await XlsxIO.fetchWorkbookBytes(token);
       rows = XlsxIO.parseRows(originalBytes);
       sortRowsByStartDate(rows); // 一律依開始日期由近到遠顯示,不受 Excel 實體列順序影響
       renderTable();
@@ -193,6 +223,10 @@
       console.error(err);
       statusLine.textContent = '載入失敗';
       toast('載入資料失敗:' + err.message, true);
+      if (err.status === 401 || err.status === 403) {
+        DriveAuth.resetAuth();
+        showLoginGate('登入已過期或沒有檢視權限,請重新登入');
+      }
       return false;
     }
   }
@@ -385,7 +419,7 @@
       // 重新整理後仍然維持(否則下次讀取又會照 Excel 原本的實體列順序顯示)
       cleanRows.forEach((r, i) => { r.row = CFG.MIN_ROW + i; });
       const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows);
-      const token = await DriveAuth.ensureWriteAccess();
+      const token = await DriveAuth.ensureAccessToken();
       await XlsxIO.uploadWorkbook(patchedBytes, token);
       originalBytes = patchedBytes;
       rows = XlsxIO.parseRows(patchedBytes);
@@ -395,8 +429,15 @@
       renderGantt();
     } catch (err) {
       console.error(err);
-      toast('儲存失敗:' + err.message, true);
-      DriveAuth.resetAuth(); // 重試時強制重新登入 + 重新選檔,避免沿用可能有問題的授權狀態
+      if (err.status === 403) {
+        toast('儲存失敗:您的 Google 帳號目前只有檢視權限,請聯絡檔案擁有者升級為編輯者', true);
+      } else {
+        toast('儲存失敗:' + err.message, true);
+      }
+      if (err.status === 401) {
+        DriveAuth.resetAuth(); // 權杖失效,強制重新登入
+        showLoginGate('登入已過期,請重新登入');
+      }
     } finally {
       saving = false;
       saveFab.innerHTML = originalLabel;
@@ -405,8 +446,7 @@
   });
 
   // ---------- 啟動 ----------
-
-  loadData();
+  // 資料要等使用者按下登入按鈕、成功取得權杖後才會載入(見上方 loginBtn 事件)
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {

@@ -1,14 +1,13 @@
 // drive-auth.js
-// 使用 Google Identity Services 取得僅限「使用者選取檔案」的存取權杖(drive.file scope),
-// 並透過 Google Picker 讓使用者明確選取 Work List.xlsm,取得該檔案的寫入授權。
-// 這樣網站不需要、也不會取得使用者整個雲端硬碟的存取權限。
+// 使用 Google Identity Services 取得存取權杖(drive scope)。改為「必須登入才能
+// 檢視」架構後,讀取與寫入都改用同一個 OAuth 權杖,不再需要 API 金鑰或
+// Google Picker——每個使用者能看到 / 能否儲存,完全依 Drive 本身在
+// Work List.xlsm 上設定的共用權限(檢視者 / 編輯者)判斷。
 (function () {
   const CFG = window.APP_CONFIG;
 
   let tokenClient = null;
   let accessToken = null;
-  let pickerConfirmed = false;
-  let pickerApiLoaded = false;
 
   function ensureTokenClient() {
     if (tokenClient) return tokenClient;
@@ -42,68 +41,21 @@
     });
   }
 
-  function loadPickerApi() {
-    return new Promise((resolve, reject) => {
-      if (pickerApiLoaded) return resolve();
-      if (!window.gapi) return reject(new Error('Google API 元件尚未載入'));
-      gapi.load('picker', {
-        callback: () => { pickerApiLoaded = true; resolve(); },
-        onerror: () => reject(new Error('Google Picker 載入失敗')),
-      });
-    });
-  }
-
-  async function confirmFileWithPicker() {
-    await loadPickerApi();
-    if (!accessToken) throw new Error('尚未取得存取權杖');
-
-    return new Promise((resolve, reject) => {
-      const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS)
-        .setQuery('Work List')
-        .setIncludeFolders(true);
-
-      const picker = new google.picker.PickerBuilder()
-        .setOAuthToken(accessToken)
-        .setDeveloperKey(CFG.GOOGLE_API_KEY)
-        .setAppId(CFG.GOOGLE_PROJECT_NUMBER)
-        .addView(view)
-        .setTitle('請選擇「Work List.xlsm」以授權儲存')
-        .setCallback((data) => {
-          if (data.action === google.picker.Action.PICKED) {
-            const doc = data.docs && data.docs[0];
-            if (doc && doc.id === CFG.DRIVE_FILE_ID) {
-              pickerConfirmed = true;
-              resolve(true);
-            } else {
-              reject(new Error('請選擇正確的 Work List.xlsm 檔案'));
-            }
-          } else if (data.action === google.picker.Action.CANCEL) {
-            reject(new Error('已取消授權'));
-          }
-        })
-        .build();
-      picker.setVisible(true);
-    });
-  }
-
   /**
-   * 確保已取得可寫入 Work List.xlsm 的存取權杖。
-   * 第一次會跳出 Google 登入 + Picker 選檔視窗;同一瀏覽器工作階段內重複呼叫會重用權杖。
+   * 確保已取得存取權杖(用於讀取與寫入)。第一次呼叫(或權杖失效後)會跳出
+   * Google 登入視窗;同一瀏覽器工作階段內重複呼叫會重用既有權杖。
+   * 必須在使用者點擊事件內呼叫,瀏覽器才不會擋下登入彈出視窗。
    */
-  async function ensureWriteAccess() {
+  async function ensureAccessToken() {
     if (!accessToken) {
-      await requestAccessToken({ prompt: 'consent' });
-    }
-    if (!pickerConfirmed) {
-      await confirmFileWithPicker();
+      await requestAccessToken({ prompt: '' });
     }
     return accessToken;
   }
 
   function resetAuth() {
     accessToken = null;
-    pickerConfirmed = false;
   }
 
-  window.DriveAuth = { ensureWriteAccess, resetAuth };
+  window.DriveAuth = { ensureAccessToken, resetAuth };
 })();

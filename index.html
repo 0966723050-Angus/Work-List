@@ -91,10 +91,21 @@
   <div id="toast" class="toast"></div>
   <div id="ganttTooltip" class="gantt-tooltip"></div>
 
+  <!-- 登入門檻:未登入 Google 帳號前,整個網站的內容都不會載入 -->
+  <div id="loginGate" class="modal-overlay login-gate">
+    <div class="modal-box">
+      <h2>需要登入才能檢視</h2>
+      <p>這份工作清單僅開放給獲得授權的同仁查看,請使用 Google 帳號登入。</p>
+      <div id="loginError" class="modal-error"></div>
+      <div class="modal-actions" style="justify-content:center;">
+        <button id="loginBtn" class="btn btn-primary">🔐 使用 Google 帳號登入</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://apis.google.com/js/api.js"></script>
   <script src="js/config.js"></script>
   <script src="js/xlsx-io.js"></script>
   <script src="js/drive-auth.js"></script>

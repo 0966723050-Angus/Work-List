@@ -390,6 +390,7 @@ main {
   padding: 20px;
 }
 .modal-overlay[hidden] { display: none; }
+.login-gate { z-index: 300; background: var(--color-bg); }
 .modal-box {
   background: var(--color-surface);
   border-radius: 16px;
