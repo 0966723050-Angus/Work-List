@@ -12,7 +12,10 @@
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
-  const ZOOM_STEPS = [0.5, 0.65, 0.8, 1, 1.25, 1.6, 2, 2.5];
+  const DONE_GREEN = '#1b5e20';
+  const DONE_STRIPE = '#a5d6a7';
+
+  const ZOOM_STEPS =[0.5, 0.65, 0.8, 1, 1.25, 1.6, 2, 2.5];
   const DEFAULT_ZOOM_INDEX = 3; // = 1x
 
   function colorForStatus(status) {
@@ -144,6 +147,16 @@
     svg.setAttribute('height', bodyHeight);
     svg.setAttribute('viewBox', `0 0 ${width} ${bodyHeight}`);
 
+    // 已結案項目的斜線填色圖樣:深綠底 + 淺色 45 度斜線
+    const defs = svgEl('defs');
+    const pattern = svgEl('pattern', {
+      id: 'doneHatch', patternUnits: 'userSpaceOnUse', width: 7, height: 7, patternTransform: 'rotate(45)',
+    });
+    pattern.appendChild(svgEl('rect', { width: 7, height: 7, fill: DONE_GREEN }));
+    pattern.appendChild(svgEl('line', { x1: 0, y1: 0, x2: 0, y2: 7, stroke: DONE_STRIPE, 'stroke-width': 2.5 }));
+    defs.appendChild(pattern);
+    svg.appendChild(defs);
+
     // 日期欄頭 + 直向格線(每天一欄)
     for (let d = 0; d <= numDays; d++) {
       const x = d * dayW + 2;
@@ -221,9 +234,13 @@
 
       const rect = svgEl('rect', {
         x, y: barY, width: barW, height: BAR_H, rx: 6, ry: 6,
-        fill: colorForStatus(r.status),
+        fill: r.archived ? 'url(#doneHatch)' : colorForStatus(r.status),
         class: 'gantt-bar',
       });
+      if (r.archived) {
+        rect.setAttribute('stroke', DONE_GREEN);
+        rect.setAttribute('stroke-width', 1.5);
+      }
       rect.style.cursor = 'pointer';
       svg.appendChild(rect);
 
@@ -232,7 +249,9 @@
         tooltip.innerHTML =
           `<strong>${escapeHtml(r.item)}</strong><br>` +
           `${r.start} ~ ${r.end}(${r.duration ?? ''}天)<br>` +
-          `狀態:${escapeHtml(r.status || '-')}` +
+          (r.archived
+            ? `狀態:已結案(資料庫)${r.closed ? `,結案日 ${r.closed}` : ''}`
+            : `狀態:${escapeHtml(r.status || '-')}`) +
           (people ? `<br>${escapeHtml(people)}` : '') +
           (r.note ? `<br>備註:${escapeHtml(r.note)}` : '');
         const cx = evt.touches ? evt.touches[0].clientX : evt.clientX;

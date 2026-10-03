@@ -1,7 +1,7 @@
 // sw.js - 簡易 PWA 離線快取(僅快取網站自身的靜態資源,不快取 Google API 資料請求)
 // 採「網路優先」策略:只要能連上網路就一律拿最新檔案,只有離線 / 網路失敗時才退回快取,
 // 避免使用者裝置長期停留在舊版本的 HTML/JS/CSS。
-const CACHE_NAME = 'atk-worklist-v3';
+const CACHE_NAME = 'atk-worklist-v4';
 const APP_SHELL = [
   './',
   './index.html',

@@ -5,6 +5,7 @@
 
   let originalBytes = null;
   let rows = []; // { row, item, start, end, duration, status, hw, sw, note }
+  let archive = []; // 「資料庫」工作表:已結案項目 { item, start, end, duration, status, hw, sw, note, closed }
   let editMode = false;
   let saving = false;
 
@@ -143,7 +144,15 @@
     ganttEndInput.value = Gantt.toISO(ganttRange.end);
   }
   function renderGantt() {
-    Gantt.render(rows.filter((r) => r.status !== '完工'), ganttRange, ganttZoomIndex);
+    // 進行中項目一律列出;已結案(資料庫)項目只有與目前檢視區間有重疊時才列出並畫斜線長條,
+    // 因此左側工作項目會隨日期區間移動而跟著增減
+    const rs = Gantt.toISO(ganttRange.start);
+    const re = Gantt.toISO(ganttRange.end);
+    const done = archive
+      .filter((a) => a.start && a.end && a.end >= rs && a.start <= re)
+      .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
+      .map((a) => ({ ...a, archived: true }));
+    Gantt.render([...rows, ...done], ganttRange, ganttZoomIndex);
     ganttZoomOutBtn.disabled = ganttZoomIndex <= 0;
     ganttZoomInBtn.disabled = ganttZoomIndex >= Gantt.ZOOM_STEPS.length - 1;
   }
@@ -213,6 +222,13 @@
       const token = await DriveAuth.ensureAccessToken();
       originalBytes = await XlsxIO.fetchWorkbookBytes(token);
       rows = XlsxIO.parseRows(originalBytes);
+      archive = XlsxIO.parseArchive(originalBytes);
+      // 舊資料中仍留在 List 的「完工」項目,改歸入資料庫(下次儲存時才會寫回雲端)
+      rows = rows.filter((r) => {
+        if (r.status !== '完工') return true;
+        archive.push({ ...r, closed: '' });
+        return false;
+      });
       sortRowsByStartDate(rows); // 一律依開始日期由近到遠顯示,不受 Excel 實體列順序影響
       renderTable();
       renderGantt();
@@ -235,10 +251,8 @@
 
   function renderTable() {
     recordList().innerHTML = '';
-    // 檢視模式下,狀態為「完工」的項目不顯示;編輯模式仍會列出,方便修改/改回其他狀態
-    const visibleRows = editMode ? rows : rows.filter((r) => r.status !== '完工');
-    emptyState.hidden = visibleRows.length > 0;
-    visibleRows.forEach((row, idx) => {
+    emptyState.hidden = rows.length > 0;
+    rows.forEach((row, idx) => {
       recordList().appendChild(editMode ? renderEditCard(row, idx) : renderViewCard(row));
     });
     addRowBtn.style.display = editMode && rows.length < (CFG.MAX_ROW - CFG.MIN_ROW + 1) ? 'inline-flex' : 'none';
@@ -322,6 +336,15 @@
     });
     card.querySelectorAll('select[data-f]').forEach((select) => {
       select.addEventListener('change', () => {
+        const prev = row[select.dataset.f];
+        if (select.value === '完工') {
+          if (confirm(`「${row.item || '(未命名項目)'}」已完工,是否要結案並移至資料庫?`)) {
+            archiveRow(row);
+          } else {
+            select.value = prev || '';
+          }
+          return;
+        }
         row[select.dataset.f] = select.value;
       });
     });
@@ -330,6 +353,20 @@
       renderTable();
     });
     return card;
+  }
+
+  function archiveRow(row) {
+    const idx = rows.indexOf(row);
+    if (idx >= 0) rows.splice(idx, 1);
+    recalcDuration(row);
+    archive.push({
+      item: row.item, start: row.start, end: row.end, duration: row.duration,
+      status: '完工', hw: row.hw, sw: row.sw, note: row.note,
+      closed: Gantt.toISO(Gantt.todayUTC()),
+    });
+    renderTable();
+    statusLine.textContent = `共 ${rows.length} 筆(已結案移至資料庫,按「儲存」寫回雲端)`;
+    toast('已結案並移至資料庫,請按右下角「儲存」寫回雲端');
   }
 
   function escapeHtml(str) {
@@ -418,11 +455,12 @@
       // 依排序後的順序,重新指定實際要寫入的 Excel 列號,讓排序結果在存檔、
       // 重新整理後仍然維持(否則下次讀取又會照 Excel 原本的實體列順序顯示)
       cleanRows.forEach((r, i) => { r.row = CFG.MIN_ROW + i; });
-      const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows);
+      const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows, archive);
       const token = await DriveAuth.ensureAccessToken();
       await XlsxIO.uploadWorkbook(patchedBytes, token);
       originalBytes = patchedBytes;
       rows = XlsxIO.parseRows(patchedBytes);
+      archive = XlsxIO.parseArchive(patchedBytes);
       sortRowsByStartDate(rows);
       toast('已成功儲存至 Google Drive');
       exitEditMode();

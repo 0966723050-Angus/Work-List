@@ -210,7 +210,7 @@
    * 將編輯後的資料列(rows,結構同 parseRows 回傳格式)套用到原始 xlsm bytes,
    * 回傳新的檔案 bytes(Uint8Array),可直接上傳回 Drive。
    */
-  function buildPatchedWorkbook(originalBytes, rows) {
+  function buildPatchedWorkbook(originalBytes, rows, archiveRows) {
     const zipIn = fflate.unzipSync(new Uint8Array(originalBytes));
     const sheetBytes = zipIn[SHEET_XML_PATH];
     if (!sheetBytes) throw new Error('原始檔案缺少工作表 XML,無法寫入');
@@ -265,7 +265,143 @@
     const zipOut = Object.assign({}, zipIn);
     zipOut[SHEET_XML_PATH] = new TextEncoder().encode(newXml);
 
+    if (archiveRows) writeArchiveSheet(zipOut, originalBytes, archiveRows);
+
     return fflate.zipSync(zipOut, { level: 6 });
+  }
+
+  // ---------- 資料庫工作表(已結案項目) ----------
+
+  const ARCHIVE_SHEET_NAME = '資料庫';
+  const ARCHIVE_HEADERS = ['工作項目', '計畫開始時間', '計畫結束時間', '工時(天)', '狀態', '硬體作業人員', '軟體/電控作業人員', '備註', '結案日期'];
+  const REL_NS_URI = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const WORKSHEET_CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml';
+
+  function parseArchive(bytes) {
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
+    const ws = wb.Sheets[ARCHIVE_SHEET_NAME];
+    if (!ws || !ws['!ref']) return [];
+    const lastRow = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
+    const out = [];
+    for (let r = 2; r <= lastRow; r++) {
+      const get = (col) => {
+        const cell = ws[`${col}${r}`];
+        return cell ? cell.v : undefined;
+      };
+      const item = get('A');
+      if ([item, get('B'), get('C'), get('E')].every((v) => v === undefined || v === '')) continue;
+      const start = serialToISODate(get('B'));
+      const end = serialToISODate(get('C'));
+      const s = isoDateToSerial(start);
+      const e = isoDateToSerial(end);
+      out.push({
+        item: item != null ? String(item) : '',
+        start,
+        end,
+        duration: s != null && e != null ? e - s + 1 : null,
+        status: get('E') != null ? String(get('E')) : '完工',
+        hw: get('F') != null ? String(get('F')) : '',
+        sw: get('G') != null ? String(get('G')) : '',
+        note: get('H') != null ? String(get('H')) : '',
+        closed: serialToISODate(get('I')),
+      });
+    }
+    return out;
+  }
+
+  function buildArchiveSheetXml(archiveRows, headers) {
+    const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+    const textCell = (ref, text, style) =>
+      text === '' || text == null
+        ? ''
+        : `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(text)}</t></is></c>`;
+    const numCell = (ref, num, style) =>
+      num == null || Number.isNaN(num) ? '' : `<c r="${ref}" s="${style}"><v>${num}</v></c>`;
+
+    const headerRow =
+      `<row r="1">${headers.map((h, i) => textCell(`${colLetters[i]}1`, h, 5)).join('')}</row>`;
+    const bodyRows = archiveRows
+      .map((a, i) => {
+        const r = i + 2;
+        const s = isoDateToSerial(a.start);
+        const e = isoDateToSerial(a.end);
+        return (
+          `<row r="${r}">` +
+          textCell(`A${r}`, a.item, 2) +
+          numCell(`B${r}`, s, 11) +
+          numCell(`C${r}`, e, 11) +
+          numCell(`D${r}`, s != null && e != null ? e - s + 1 : null, 3) +
+          textCell(`E${r}`, a.status || '完工', 3) +
+          textCell(`F${r}`, a.hw, 2) +
+          textCell(`G${r}`, a.sw, 2) +
+          textCell(`H${r}`, a.note, 3) +
+          numCell(`I${r}`, isoDateToSerial(a.closed), 11) +
+          `</row>`
+        );
+      })
+      .join('');
+    const widths = [43, 19, 19, 10, 12, 30, 30, 30, 19];
+    const cols = widths
+      .map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`)
+      .join('');
+    return (
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<worksheet xmlns="${NS}" xmlns:r="${REL_NS_URI}">` +
+      `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` +
+      `<sheetFormatPr defaultRowHeight="20"/><cols>${cols}</cols>` +
+      `<sheetData>${headerRow}${bodyRows}</sheetData></worksheet>`
+    );
+  }
+
+  // 找出(或新增)「資料庫」工作表在 zip 內的路徑;新增時一併更新
+  // workbook.xml / workbook.xml.rels / [Content_Types].xml
+  function ensureArchiveSheetPath(zip) {
+    const dec = (u8) => new TextDecoder('utf-8').decode(u8);
+    const enc = (s) => new TextEncoder().encode(s);
+    const wbXml = dec(zip['xl/workbook.xml']);
+    const relsXml = dec(zip['xl/_rels/workbook.xml.rels']);
+
+    const sheetTag = (wbXml.match(/<sheet\b[^>]*>/g) || []).find((t) => t.includes(`name="${ARCHIVE_SHEET_NAME}"`));
+    if (sheetTag) {
+      const rid = (sheetTag.match(/r:id="([^"]+)"/) || [])[1];
+      const relTag = (relsXml.match(/<Relationship\b[^>]*>/g) || []).find((t) => t.includes(`Id="${rid}"`));
+      const target = relTag && (relTag.match(/Target="([^"]+)"/) || [])[1];
+      if (target) return target.startsWith('/') ? target.slice(1) : `xl/${target}`;
+    }
+
+    let n = 2;
+    while (zip[`xl/worksheets/sheet${n}.xml`]) n++;
+    const path = `xl/worksheets/sheet${n}.xml`;
+    const maxSheetId = Math.max(0, ...[...wbXml.matchAll(/sheetId="(\d+)"/g)].map((m) => Number(m[1])));
+    const maxRid = Math.max(0, ...[...relsXml.matchAll(/\bId="rId(\d+)"/g)].map((m) => Number(m[1])));
+    const rid = `rId${maxRid + 1}`;
+
+    zip['xl/workbook.xml'] = enc(
+      wbXml.replace('</sheets>', `<sheet name="${ARCHIVE_SHEET_NAME}" sheetId="${maxSheetId + 1}" r:id="${rid}"/></sheets>`)
+    );
+    zip['xl/_rels/workbook.xml.rels'] = enc(
+      relsXml.replace(
+        '</Relationships>',
+        `<Relationship Id="${rid}" Type="${REL_NS_URI}/worksheet" Target="worksheets/sheet${n}.xml"/></Relationships>`
+      )
+    );
+    const ctXml = dec(zip['[Content_Types].xml']);
+    zip['[Content_Types].xml'] = enc(
+      ctXml.replace('</Types>', `<Override PartName="/${path}" ContentType="${WORKSHEET_CT}"/></Types>`)
+    );
+    return path;
+  }
+
+  function writeArchiveSheet(zip, originalBytes, archiveRows) {
+    let headers = ARCHIVE_HEADERS;
+    try {
+      const wb = XLSX.read(originalBytes, { type: 'array', cellDates: false });
+      const ws = wb.Sheets[CFG.SHEET_NAME];
+      const listHeaders = COLS.map((c) => (ws && ws[`${c}1`] ? String(ws[`${c}1`].v) : ''));
+      if (listHeaders.every(Boolean)) headers = [...listHeaders, '結案日期'];
+    } catch (e) { /* 取不到表頭就用預設值 */ }
+    const path = ensureArchiveSheetPath(zip);
+    zip[path] = new TextEncoder().encode(buildArchiveSheetXml(archiveRows, headers));
   }
 
   async function uploadWorkbook(bytes, accessToken) {
@@ -290,6 +426,7 @@
   window.XlsxIO = {
     fetchWorkbookBytes,
     parseRows,
+    parseArchive,
     buildPatchedWorkbook,
     uploadWorkbook,
     serialToISODate,
