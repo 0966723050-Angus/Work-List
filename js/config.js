@@ -21,6 +21,7 @@ window.APP_CONFIG = {
   EDIT_PASSWORD_HASH: '6f8c41020e56d0972ca7529a39855ea79ddc499a107381671b6d2f46741a7d00',
 
   // 表格可編輯/新增的最大資料列(對應 Excel 原始表格已預先格式化的列數範圍 List!A2:A17)
+  ADMIN_EMAIL_HASH: 'e825d940b8eb5d18c87d50a0b8eb361ddf858c45209a965f57854192aa8970e3',
   MAX_ROW: 17,
   MIN_ROW: 2,
 };

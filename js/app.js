@@ -8,6 +8,10 @@
   let archive = []; // 「資料庫」工作表:已結案項目 { item, start, end, duration, status, hw, sw, note, closed }
   let editMode = false;
   let saving = false;
+  let currentEmail = '';
+  let isAdmin = false;
+  let skipPassword = false; // 目前登入者在「權限」中被勾選為免密碼
+  let permissions = []; // 「權限」工作表:{ email, noPassword }
 
   const el = (id) => document.getElementById(id);
   const recordList = () => el('recordList');
@@ -125,7 +129,9 @@
       document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
       el(`page-${btn.dataset.page}`).classList.add('active');
+      document.body.classList.toggle('on-settings', btn.dataset.page === 'settings');
       if (btn.dataset.page === 'chart') renderGantt();
+      if (btn.dataset.page === 'settings') showSettingsMenu();
       closeDrawer();
     });
   });
@@ -223,6 +229,8 @@
       originalBytes = await XlsxIO.fetchWorkbookBytes(token);
       rows = XlsxIO.parseRows(originalBytes);
       archive = XlsxIO.parseArchive(originalBytes);
+      permissions = XlsxIO.parsePermissions(originalBytes);
+      await resolveCurrentUser(token);
       // 舊資料中仍留在 List 的「完工」項目,改歸入資料庫(下次儲存時才會寫回雲端)
       rows = rows.filter((r) => {
         if (r.status !== '完工') return true;
@@ -246,6 +254,100 @@
       return false;
     }
   }
+
+  // 取得目前登入者的 Google 帳號,判斷是否為管理者、是否免密碼
+  async function resolveCurrentUser(token) {
+    try {
+      if (!currentEmail) currentEmail = await XlsxIO.fetchCurrentUserEmail(token);
+    } catch (err) {
+      console.error(err);
+    }
+    isAdmin = !!currentEmail && (await sha256Hex(currentEmail)) === CFG.ADMIN_EMAIL_HASH;
+    skipPassword = !!currentEmail && permissions.some((p) => p.email === currentEmail && p.noPassword);
+    el('settingsMenuItem').style.display = isAdmin ? '' : 'none';
+  }
+
+  // ---------- 設定頁 / 權限 ----------
+
+  const settingsMenu = el('settingsMenu');
+  const permView = el('permView');
+  const permList = el('permList');
+  const permStatus = el('permStatus');
+  const permSaveBtn = el('permSaveBtn');
+  let permDraft = []; // { email, role, noPassword }
+
+  function showSettingsMenu() {
+    settingsMenu.hidden = false;
+    permView.hidden = true;
+  }
+
+  const ROLE_LABELS = { owner: '擁有者', organizer: '擁有者', writer: '編輯者', fileOrganizer: '編輯者', commenter: '留言者', reader: '檢視者' };
+
+  function renderPermList() {
+    permList.innerHTML = '';
+    permDraft.forEach((p) => {
+      const row = document.createElement('div');
+      row.className = 'perm-row';
+      row.innerHTML = `
+        <span class="perm-email">${escapeHtml(p.email)}<span class="perm-role">${escapeHtml(p.role ? ROLE_LABELS[p.role] || p.role : '不在目前共用名單')}</span></span>
+        <label><input type="checkbox"${p.noPassword ? ' checked' : ''}>免密碼</label>`;
+      row.querySelector('input').addEventListener('change', (e) => { p.noPassword = e.target.checked; });
+      permList.appendChild(row);
+    });
+  }
+
+  el('permMenuBtn').addEventListener('click', async () => {
+    if (!isAdmin) return;
+    settingsMenu.hidden = true;
+    permView.hidden = false;
+    permStatus.textContent = '載入人員名單…';
+    permDraft = [];
+    renderPermList();
+    let people = [];
+    try {
+      const token = await DriveAuth.ensureAccessToken();
+      people = await XlsxIO.fetchSharedPeople(token);
+      permStatus.textContent = '';
+    } catch (err) {
+      console.error(err);
+      permStatus.textContent = '無法取得共用名單,僅顯示已設定的人員';
+    }
+    const byEmail = new Map();
+    people.forEach((p) => byEmail.set(p.email, { email: p.email, role: p.role, noPassword: false }));
+    permissions.forEach((p) => {
+      const cur = byEmail.get(p.email) || { email: p.email, role: '', noPassword: false };
+      cur.noPassword = p.noPassword;
+      byEmail.set(p.email, cur);
+    });
+    const rank = (r) => (r === 'owner' ? 0 : r === 'writer' || r === 'fileOrganizer' || r === 'organizer' ? 1 : 2);
+    permDraft = [...byEmail.values()].sort((a, b) => rank(a.role) - rank(b.role) || a.email.localeCompare(b.email));
+    renderPermList();
+  });
+  el('permBackBtn').addEventListener('click', showSettingsMenu);
+
+  permSaveBtn.addEventListener('click', async () => {
+    permSaveBtn.disabled = true;
+    const label = permSaveBtn.innerHTML;
+    permSaveBtn.innerHTML = '<span class="spinner"></span> 儲存中…';
+    try {
+      const token = await DriveAuth.ensureAccessToken();
+      const latest = await XlsxIO.fetchWorkbookBytes(token); // 以雲端最新版為底,只改寫「權限」工作表
+      const entries = permDraft.map((p) => ({ email: p.email, noPassword: p.noPassword }));
+      const out = XlsxIO.buildPermissionsWorkbook(latest, entries);
+      await XlsxIO.uploadWorkbook(out, token);
+      originalBytes = out;
+      permissions = entries;
+      skipPassword = permissions.some((p) => p.email === currentEmail && p.noPassword);
+      toast('權限已儲存');
+    } catch (err) {
+      console.error(err);
+      if (err.status === 401) { DriveAuth.resetAuth(); showLoginGate('登入已過期,請重新登入'); }
+      toast(err.status === 403 ? '儲存失敗:您沒有此檔案的編輯權限' : '儲存失敗:' + err.message, true);
+    } finally {
+      permSaveBtn.innerHTML = label;
+      permSaveBtn.disabled = false;
+    }
+  });
 
   // ---------- 表格渲染 ----------
 
@@ -384,6 +486,7 @@
 
   editFab.addEventListener('click', () => {
     if (editMode) return;
+    if (skipPassword) { enterEditMode(); return; }
     passwordError.textContent = '';
     passwordInput.value = '';
     passwordModal.hidden = false;

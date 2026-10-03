@@ -355,13 +355,13 @@
 
   // 找出(或新增)「資料庫」工作表在 zip 內的路徑;新增時一併更新
   // workbook.xml / workbook.xml.rels / [Content_Types].xml
-  function ensureArchiveSheetPath(zip) {
+  function ensureSheetPath(zip, sheetName) {
     const dec = (u8) => new TextDecoder('utf-8').decode(u8);
     const enc = (s) => new TextEncoder().encode(s);
     const wbXml = dec(zip['xl/workbook.xml']);
     const relsXml = dec(zip['xl/_rels/workbook.xml.rels']);
 
-    const sheetTag = (wbXml.match(/<sheet\b[^>]*>/g) || []).find((t) => t.includes(`name="${ARCHIVE_SHEET_NAME}"`));
+    const sheetTag = (wbXml.match(/<sheet\b[^>]*>/g) || []).find((t) => t.includes(`name="${sheetName}"`));
     if (sheetTag) {
       const rid = (sheetTag.match(/r:id="([^"]+)"/) || [])[1];
       const relTag = (relsXml.match(/<Relationship\b[^>]*>/g) || []).find((t) => t.includes(`Id="${rid}"`));
@@ -377,7 +377,7 @@
     const rid = `rId${maxRid + 1}`;
 
     zip['xl/workbook.xml'] = enc(
-      wbXml.replace('</sheets>', `<sheet name="${ARCHIVE_SHEET_NAME}" sheetId="${maxSheetId + 1}" r:id="${rid}"/></sheets>`)
+      wbXml.replace('</sheets>', `<sheet name="${sheetName}" sheetId="${maxSheetId + 1}" r:id="${rid}"/></sheets>`)
     );
     zip['xl/_rels/workbook.xml.rels'] = enc(
       relsXml.replace(
@@ -400,8 +400,78 @@
       const listHeaders = COLS.map((c) => (ws && ws[`${c}1`] ? String(ws[`${c}1`].v) : ''));
       if (listHeaders.every(Boolean)) headers = [...listHeaders, '結案日期'];
     } catch (e) { /* 取不到表頭就用預設值 */ }
-    const path = ensureArchiveSheetPath(zip);
+    const path = ensureSheetPath(zip, ARCHIVE_SHEET_NAME);
     zip[path] = new TextEncoder().encode(buildArchiveSheetXml(archiveRows, headers));
+  }
+
+  // ---------- 權限工作表(誰進入編輯頁免輸入密碼) ----------
+
+  const PERM_SHEET_NAME = '權限';
+  const PERM_CHECKED = '☑免密碼';
+  const PERM_UNCHECKED = '☐免密碼';
+
+  function parsePermissions(bytes) {
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
+    const ws = wb.Sheets[PERM_SHEET_NAME];
+    if (!ws || !ws['!ref']) return [];
+    const lastRow = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
+    const out = [];
+    for (let r = 2; r <= lastRow; r++) {
+      const a = ws[`A${r}`];
+      const email = a && a.v != null ? String(a.v).trim().toLowerCase() : '';
+      if (!email) continue;
+      const b = ws[`B${r}`];
+      const flag = b && b.v != null ? String(b.v).trim() : '';
+      out.push({ email, noPassword: /^(☑|✅|✔|y|是|true|1)/i.test(flag) });
+    }
+    return out;
+  }
+
+  // 只改寫「權限」工作表,其餘內容(List、資料庫、VBA、圖表)原封不動
+  function buildPermissionsWorkbook(originalBytes, entries) {
+    const zip = fflate.unzipSync(new Uint8Array(originalBytes));
+    const textCell = (ref, text, style) =>
+      text ? `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(text)}</t></is></c>` : '';
+    const body = entries
+      .map((e, i) => {
+        const r = i + 2;
+        return `<row r="${r}">${textCell(`A${r}`, e.email, 2)}${textCell(`B${r}`, e.noPassword ? PERM_CHECKED : PERM_UNCHECKED, 2)}</row>`;
+      })
+      .join('');
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<worksheet xmlns="${NS}" xmlns:r="${REL_NS_URI}">` +
+      `<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="20"/>` +
+      `<cols><col min="1" max="1" width="40" customWidth="1"/><col min="2" max="2" width="18" customWidth="1"/></cols>` +
+      `<sheetData><row r="1">${textCell('A1', '人員', 5)}</row>${body}</sheetData></worksheet>`;
+    zip[ensureSheetPath(zip, PERM_SHEET_NAME)] = new TextEncoder().encode(xml);
+    return fflate.zipSync(zip, { level: 6 });
+  }
+
+  async function driveGet(url, accessToken) {
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!resp.ok) {
+      const err = new Error(`Drive 請求失敗 (${resp.status})`);
+      err.status = resp.status;
+      throw err;
+    }
+    return resp.json();
+  }
+
+  async function fetchCurrentUserEmail(accessToken) {
+    const data = await driveGet('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', accessToken);
+    return ((data.user && data.user.emailAddress) || '').toLowerCase();
+  }
+
+  // 目前有權限存取這份檔案的所有人員(依 Drive 共用設定)
+  async function fetchSharedPeople(accessToken) {
+    const url =
+      `https://www.googleapis.com/drive/v3/files/${CFG.DRIVE_FILE_ID}/permissions` +
+      `?fields=permissions(emailAddress,role,type)&supportsAllDrives=true&pageSize=100`;
+    const data = await driveGet(url, accessToken);
+    return (data.permissions || [])
+      .filter((p) => p.emailAddress)
+      .map((p) => ({ email: p.emailAddress.toLowerCase(), role: p.role }));
   }
 
   async function uploadWorkbook(bytes, accessToken) {
@@ -427,6 +497,10 @@
     fetchWorkbookBytes,
     parseRows,
     parseArchive,
+    parsePermissions,
+    buildPermissionsWorkbook,
+    fetchCurrentUserEmail,
+    fetchSharedPeople,
     buildPatchedWorkbook,
     uploadWorkbook,
     serialToISODate,

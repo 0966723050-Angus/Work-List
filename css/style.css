@@ -468,3 +468,26 @@ main {
 @media (min-width: 720px) {
   .record-list { display: grid; grid-template-columns: 1fr 1fr; }
 }
+
+/* 設定頁 */
+body.on-settings .fab-edit { display: none !important; }
+.settings-title { font-size: 18px; margin: 8px 4px 12px; }
+.settings-hint { font-size: 13px; color: var(--color-text-muted); margin: 0 4px 12px; }
+.settings-item {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  padding: 16px; font-size: 16px; color: var(--color-text); text-align: left;
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer;
+}
+.settings-item .chev { color: var(--color-text-muted); font-size: 22px; }
+.perm-list { display: flex; flex-direction: column; gap: 8px; }
+.perm-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 12px 16px; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+}
+.perm-row .perm-email { word-break: break-all; }
+.perm-row .perm-role { display: block; font-size: 12px; color: var(--color-text-muted); }
+.perm-row label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
+.perm-row input[type="checkbox"] { width: 20px; height: 20px; }
+.perm-actions { margin-top: 16px; display: flex; justify-content: flex-end; }
