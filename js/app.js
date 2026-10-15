@@ -21,6 +21,7 @@
   const saveFab = el('saveFab');
   const addRowBtn = el('addRowBtn');
   const cancelEditBtn = el('cancelEditBtn');
+  const searchDoneBtn = el('searchDoneBtn');
   const toastEl = el('toast');
 
   // ---------- 工具 ----------
@@ -154,11 +155,11 @@
     // 因此左側工作項目會隨日期區間移動而跟著增減
     const rs = Gantt.toISO(ganttRange.start);
     const re = Gantt.toISO(ganttRange.end);
-    const done = archive
+    const done = [...archive, ...rows.filter((r) => r.status === '完工')]
       .filter((a) => a.start && a.end && a.end >= rs && a.start <= re)
       .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
       .map((a) => ({ ...a, archived: true }));
-    Gantt.render([...rows, ...done], ganttRange, ganttZoomIndex);
+    Gantt.render([...rows.filter((r) => r.status !== '完工'), ...done], ganttRange, ganttZoomIndex);
     ganttZoomOutBtn.disabled = ganttZoomIndex <= 0;
     ganttZoomInBtn.disabled = ganttZoomIndex >= Gantt.ZOOM_STEPS.length - 1;
   }
@@ -513,6 +514,7 @@
     editFab.style.display = 'none';
     saveFab.style.display = 'inline-flex';
     cancelEditBtn.style.display = 'inline-flex';
+    searchDoneBtn.style.display = 'inline-flex';
     renderTable();
   }
 
@@ -522,6 +524,7 @@
     saveFab.style.display = 'none';
     addRowBtn.style.display = 'none';
     cancelEditBtn.style.display = 'none';
+    searchDoneBtn.style.display = 'none';
     renderTable();
   }
 
@@ -544,6 +547,61 @@
     recordList().lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
+  // ---------- 查詢已結案項目 ----------
+
+  const doneModal = el('doneModal');
+  const doneSearchInput = el('doneSearchInput');
+  const doneResults = el('doneResults');
+
+  function renderDoneResults() {
+    const kw = doneSearchInput.value.trim().toLowerCase();
+    const list = archive
+      .filter((a) => !kw || [a.item, a.hw, a.sw, a.note, a.start, a.end].some((v) => String(v || '').toLowerCase().includes(kw)))
+      .sort((a, b) => String(b.end || b.closed || '').localeCompare(String(a.end || a.closed || '')));
+    doneResults.innerHTML = '';
+    if (list.length === 0) {
+      doneResults.innerHTML = `<div class="done-empty">${archive.length ? '找不到符合的已結案項目' : '資料庫目前沒有已結案項目'}</div>`;
+      return;
+    }
+    list.forEach((a) => {
+      const people = [a.hw, a.sw].filter(Boolean).join(' / ');
+      const item = document.createElement('div');
+      item.className = 'done-item';
+      item.innerHTML = `
+        <span class="done-name">${escapeHtml(a.item || '(未命名項目)')}
+          <span class="done-meta">${fmtDate(a.start)} ~ ${fmtDate(a.end)}${a.closed ? `・結案 ${fmtDate(a.closed)}` : ''}${people ? `・${escapeHtml(people)}` : ''}</span>
+        </span>
+        <button type="button" class="btn btn-primary btn-sm">叫出編輯</button>`;
+      item.querySelector('button').addEventListener('click', () => restoreFromArchive(a));
+      doneResults.appendChild(item);
+    });
+  }
+
+  function restoreFromArchive(entry) {
+    if (rows.length >= CFG.MAX_ROW - CFG.MIN_ROW + 1) {
+      toast(`編輯清單已達上限(${CFG.MAX_ROW - CFG.MIN_ROW + 1} 筆),請先結案或清除其他項目`, true);
+      return;
+    }
+    const idx = archive.indexOf(entry);
+    if (idx >= 0) archive.splice(idx, 1);
+    // 保留「完工」狀態與結案日期:不改狀態就仍會在儲存時回到資料庫,改成其他狀態則恢復為進行中項目
+    rows.push({ ...entry, row: null });
+    sortRowsByStartDate(rows);
+    renderTable();
+    doneModal.hidden = true;
+    toast('已叫出「' + (entry.item || '未命名項目') + '」,狀態改成其他值即恢復為進行中;維持「完工」則儲存後仍回資料庫');
+  }
+
+  searchDoneBtn.addEventListener('click', () => {
+    doneSearchInput.value = '';
+    renderDoneResults();
+    doneModal.hidden = false;
+    setTimeout(() => doneSearchInput.focus(), 50);
+  });
+  doneSearchInput.addEventListener('input', renderDoneResults);
+  el('doneCloseBtn').addEventListener('click', () => { doneModal.hidden = true; });
+  doneModal.addEventListener('click', (e) => { if (e.target === doneModal) doneModal.hidden = true; });
+
   // ---------- 儲存 ----------
 
   saveFab.addEventListener('click', async () => {
@@ -553,12 +611,24 @@
     saveFab.innerHTML = '<span class="spinner"></span> 儲存中…';
     saveFab.disabled = true;
     try {
-      const cleanRows = rows.filter((r) => (r.item && r.item.trim()) || r.status || r.start || r.end);
+      // 叫出編輯後仍維持「完工」的項目,儲存時回到資料庫
+      const today = Gantt.toISO(Gantt.todayUTC());
+      const archiveOut = [
+        ...archive,
+        ...rows.filter((r) => r.status === '完工').map((r) => {
+          recalcDuration(r);
+          return {
+            item: r.item, start: r.start, end: r.end, duration: r.duration, status: '完工',
+            hw: r.hw, sw: r.sw, note: r.note, closed: r.closed || today,
+          };
+        }),
+      ];
+      const cleanRows = rows.filter((r) => r.status !== '完工' && ((r.item && r.item.trim()) || r.status || r.start || r.end));
       sortRowsByStartDate(cleanRows);
       // 依排序後的順序,重新指定實際要寫入的 Excel 列號,讓排序結果在存檔、
       // 重新整理後仍然維持(否則下次讀取又會照 Excel 原本的實體列順序顯示)
       cleanRows.forEach((r, i) => { r.row = CFG.MIN_ROW + i; });
-      const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows, archive);
+      const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows, archiveOut);
       const token = await DriveAuth.ensureAccessToken();
       await XlsxIO.uploadWorkbook(patchedBytes, token);
       originalBytes = patchedBytes;

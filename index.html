@@ -31,7 +31,10 @@
     <section id="page-table" class="page active">
       <div class="toolbar">
         <span id="statusLine" class="status-line">載入中…</span>
-        <button id="cancelEditBtn" class="btn btn-ghost btn-sm" style="display:none;">取消編輯</button>
+        <span class="toolbar-actions">
+          <button id="searchDoneBtn" class="btn btn-ghost btn-sm" type="button" style="display:none;">🔍 查詢已結案</button>
+          <button id="cancelEditBtn" class="btn btn-ghost btn-sm" style="display:none;">取消編輯</button>
+        </span>
       </div>
       <div id="recordList" class="record-list"></div>
       <div id="emptyState" class="empty-state" hidden>目前沒有工作項目</div>
@@ -106,6 +109,19 @@
       <div class="modal-actions">
         <button id="passwordCancelBtn" class="btn btn-ghost btn-sm">取消</button>
         <button id="passwordConfirmBtn" class="btn btn-primary btn-sm">確認</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 查詢已結案項目 modal -->
+  <div id="doneModal" class="modal-overlay" hidden>
+    <div class="modal-box done-modal">
+      <h2>查詢已結案項目</h2>
+      <p>輸入關鍵字(項目名稱、人員、備註),點「叫出編輯」可把項目移回編輯清單修改。</p>
+      <input id="doneSearchInput" type="search" placeholder="搜尋已結案項目" autocomplete="off">
+      <div id="doneResults" class="done-results"></div>
+      <div class="modal-actions">
+        <button id="doneCloseBtn" class="btn btn-ghost btn-sm" type="button">關閉</button>
       </div>
     </div>
   </div>

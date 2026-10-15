@@ -491,3 +491,20 @@ body.on-settings .fab-edit { display: none !important; }
 .perm-row label { display: flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; }
 .perm-row input[type="checkbox"] { width: 20px; height: 20px; }
 .perm-actions { margin-top: 16px; display: flex; justify-content: flex-end; }
+
+/* 查詢已結案項目 */
+.toolbar-actions { display: flex; gap: 8px; }
+.modal-box.done-modal { max-width: 480px; display: flex; flex-direction: column; max-height: 86dvh; }
+.done-modal input[type="search"] {
+  width: 100%; padding: 11px 12px; border-radius: 10px; margin-bottom: 10px;
+  border: 1px solid var(--color-border); background: var(--color-bg);
+  color: var(--color-text); font-size: 15px;
+}
+.done-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 80px; }
+.done-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg);
+}
+.done-item .done-name { font-weight: 600; font-size: 14px; word-break: break-word; }
+.done-item .done-meta { display: block; font-size: 12px; color: var(--color-text-muted); font-weight: 400; margin-top: 2px; }
+.done-empty { text-align: center; color: var(--color-text-muted); font-size: 13px; padding: 20px 0; }
