@@ -377,6 +377,7 @@
         <div class="field"><span class="field-label">工時(天)</span><span class="field-value">${row.duration ?? '-'}</span></div>
         <div class="field"><span class="field-label">狀態</span><span class="field-value">${escapeHtml(row.status || '-')}</span></div>
         ${people ? `<div class="field full"><span class="field-label">作業人員</span><span class="field-value">${escapeHtml(people)}</span></div>` : ''}
+        ${row.plan ? `<div class="field full"><span class="field-label">預計工作</span><span class="field-value" style="white-space:pre-wrap">${escapeHtml(row.plan)}</span></div>` : ''}
         ${row.note ? `<div class="field full"><span class="field-label">備註</span><span class="field-value">${escapeHtml(row.note)}</span></div>` : ''}
       </div>`;
     return card;
@@ -410,13 +411,25 @@
             ${STATUS_OPTIONS.map((s) => `<option value="${s}"${row.status === s ? ' selected' : ''}>${s}</option>`).join('')}
           </select>
         </div>
-        <div class="field">
+        <div class="field people-field" data-people="hw">
           <span class="field-label">硬體作業人員</span>
-          <input type="text" data-f="hw" value="${escapeAttr(row.hw)}">
+          <div class="people-input-wrap">
+            <input type="text" data-f="hw" value="${escapeAttr(row.hw)}" placeholder="可手動輸入,或按 ▾ 勾選">
+            <button type="button" class="people-toggle" aria-label="勾選人員">▾</button>
+          </div>
+          <div class="people-panel" hidden></div>
         </div>
-        <div class="field">
+        <div class="field people-field" data-people="sw">
           <span class="field-label">軟體/電控作業人員</span>
-          <input type="text" data-f="sw" value="${escapeAttr(row.sw)}">
+          <div class="people-input-wrap">
+            <input type="text" data-f="sw" value="${escapeAttr(row.sw)}" placeholder="可手動輸入,或按 ▾ 勾選">
+            <button type="button" class="people-toggle" aria-label="勾選人員">▾</button>
+          </div>
+          <div class="people-panel" hidden></div>
+        </div>
+        <div class="field full">
+          <span class="field-label">預計工作</span>
+          <textarea data-f="plan" rows="3" placeholder="預計進行的工作內容">${escapeHtml(row.plan)}</textarea>
         </div>
         <div class="field full">
           <span class="field-label">備註</span>
@@ -427,7 +440,7 @@
         <button type="button" class="btn btn-ghost btn-sm" data-act="clear">清除此列</button>
       </div>`;
 
-    card.querySelectorAll('input[data-f]').forEach((input) => {
+    card.querySelectorAll('input[data-f], textarea[data-f]').forEach((input) => {
       input.addEventListener('input', () => {
         const f = input.dataset.f;
         row[f] = input.value;
@@ -451,12 +464,61 @@
         row[select.dataset.f] = select.value;
       });
     });
+    card.querySelectorAll('.people-field').forEach((field) => setupPeopleField(field, row));
     card.querySelector('[data-act="clear"]').addEventListener('click', () => {
-      Object.assign(row, { item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '' });
+      Object.assign(row, { item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '', plan: '' });
       renderTable();
     });
     return card;
   }
+
+  // ---------- 人員下拉(可複選核取方塊,仍可手動輸入) ----------
+
+  const splitNames = (str) => String(str || '').split(/[,，、;；]+/).map((n) => n.trim()).filter(Boolean);
+
+  // 選項來自目前清單與資料庫中,該欄位出現過的所有人名
+  function peoplePool(key) {
+    const set = new Set();
+    [...rows, ...archive].forEach((r) => splitNames(r[key]).forEach((n) => set.add(n)));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }
+
+  function setupPeopleField(field, row) {
+    const key = field.dataset.people;
+    const input = field.querySelector('input[data-f]');
+    const panel = field.querySelector('.people-panel');
+    const toggle = field.querySelector('.people-toggle');
+
+    function renderPanel() {
+      const current = splitNames(input.value);
+      const options = [...new Set([...peoplePool(key), ...current])];
+      panel.innerHTML = options.length ? '' : '<div class="people-empty">尚無可選人員,請先手動輸入</div>';
+      options.forEach((name) => {
+        const label = document.createElement('label');
+        label.className = 'people-option';
+        label.innerHTML = `<input type="checkbox"${current.includes(name) ? ' checked' : ''}><span>${escapeHtml(name)}</span>`;
+        label.querySelector('input').addEventListener('change', (e) => {
+          const names = splitNames(input.value).filter((n) => n !== name);
+          if (e.target.checked) names.push(name);
+          // 依選項順序輸出,維持穩定
+          input.value = options.filter((n) => names.includes(n)).join(',');
+          row[key] = input.value;
+        });
+        panel.appendChild(label);
+      });
+    }
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = panel.hidden;
+      document.querySelectorAll('.people-panel').forEach((p) => { p.hidden = true; });
+      if (willOpen) { renderPanel(); panel.hidden = false; }
+    });
+    panel.addEventListener('click', (e) => e.stopPropagation());
+  }
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.people-panel').forEach((p) => { p.hidden = true; });
+  });
 
   function archiveRow(row) {
     const idx = rows.indexOf(row);
@@ -464,7 +526,7 @@
     recalcDuration(row);
     archive.push({
       item: row.item, start: row.start, end: row.end, duration: row.duration,
-      status: '完工', hw: row.hw, sw: row.sw, note: row.note,
+      status: '完工', hw: row.hw, sw: row.sw, note: row.note, plan: row.plan,
       closed: Gantt.toISO(Gantt.todayUTC()),
     });
     renderTable();
@@ -540,7 +602,7 @@
       toast(`已達最大筆數上限(${CFG.MAX_ROW - CFG.MIN_ROW + 1} 筆)`, true);
       return;
     }
-    rows.push({ row: nextRowNum, item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '' });
+    rows.push({ row: nextRowNum, item: '', start: '', end: '', duration: null, status: '', hw: '', sw: '', note: '', plan: '' });
     // 新項目尚未設定日期,穩定排序後仍會落在所有未設定日期項目的最後面
     sortRowsByStartDate(rows);
     renderTable();
@@ -556,7 +618,7 @@
   function renderDoneResults() {
     const kw = doneSearchInput.value.trim().toLowerCase();
     const list = archive
-      .filter((a) => !kw || [a.item, a.hw, a.sw, a.note, a.start, a.end].some((v) => String(v || '').toLowerCase().includes(kw)))
+      .filter((a) => !kw || [a.item, a.hw, a.sw, a.note, a.plan, a.start, a.end].some((v) => String(v || '').toLowerCase().includes(kw)))
       .sort((a, b) => String(b.end || b.closed || '').localeCompare(String(a.end || a.closed || '')));
     doneResults.innerHTML = '';
     if (list.length === 0) {
@@ -619,7 +681,7 @@
           recalcDuration(r);
           return {
             item: r.item, start: r.start, end: r.end, duration: r.duration, status: '完工',
-            hw: r.hw, sw: r.sw, note: r.note, closed: r.closed || today,
+            hw: r.hw, sw: r.sw, note: r.note, plan: r.plan, closed: r.closed || today,
           };
         }),
       ];

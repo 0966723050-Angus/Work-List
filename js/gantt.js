@@ -253,6 +253,7 @@
             ? `狀態:已結案(資料庫)${r.closed ? `,結案日 ${r.closed}` : ''}`
             : `狀態:${escapeHtml(r.status || '-')}`) +
           (people ? `<br>${escapeHtml(people)}` : '') +
+          (r.plan ? `<br>預計工作:${escapeHtml(r.plan)}` : '') +
           (r.note ? `<br>備註:${escapeHtml(r.note)}` : '');
         const cx = evt.touches ? evt.touches[0].clientX : evt.clientX;
         const cy = evt.touches ? evt.touches[0].clientY : evt.clientY;

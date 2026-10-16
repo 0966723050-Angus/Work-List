@@ -66,7 +66,7 @@
       };
       const item = get('A');
       const status = get('E');
-      const hasAny = [item, get('B'), get('C'), status, get('F'), get('G'), get('H')]
+      const hasAny = [item, get('B'), get('C'), status, get('F'), get('G'), get('H'), get('I')]
         .some((v) => v !== undefined && v !== '');
       if (!hasAny) continue;
 
@@ -80,6 +80,7 @@
         hw: get('F') != null ? String(get('F')) : '',
         sw: get('G') != null ? String(get('G')) : '',
         note: get('H') != null ? String(get('H')) : '',
+        plan: get('I') != null ? String(get('I')) : '',
       });
     }
     return rows;
@@ -204,6 +205,30 @@
     return dCell;
   }
 
+  // I 欄存「預計工作」:補上表頭,並把原本與 I~T 共用的窄欄寬獨立出來加寬
+  function ensurePlanColumn(doc, headerRow) {
+    if (headerRow) {
+      const cell = getOrCreateCell(doc, headerRow, 'I', 1, '5');
+      const hasText = Array.from(cell.children).some((c) => c.localName === 'is' || c.localName === 'v');
+      if (!hasText) {
+        cell.setAttribute('s', '5');
+        setCellInlineString(doc, cell, '預計工作');
+      }
+    }
+    const colsEl = doc.getElementsByTagNameNS(NS, 'cols')[0];
+    if (!colsEl) return;
+    const wide = Array.from(colsEl.children).find(
+      (c) => c.localName === 'col' && c.getAttribute('min') === '9' && c.getAttribute('max') === '20'
+    );
+    if (!wide) return;
+    const iCol = wide.cloneNode(false);
+    iCol.setAttribute('max', '9');
+    iCol.setAttribute('width', '38');
+    iCol.setAttribute('customWidth', '1');
+    wide.setAttribute('min', '10');
+    colsEl.insertBefore(iCol, wide);
+  }
+
   const STATUS_STYLE_FALLBACK = { A: null, E: '3', F: '3', G: '3', H: '3' };
 
   /**
@@ -231,7 +256,7 @@
     for (let r = CFG.MIN_ROW; r <= CFG.MAX_ROW; r++) {
       const rowEl = rowByNum.get(r);
       if (!rowEl) continue; // 範本已預留 2..MAX_ROW,理論上都存在
-      const data = byRowNum.get(r) || { item: '', start: '', end: '', status: '', hw: '', sw: '', note: '' };
+      const data = byRowNum.get(r) || { item: '', start: '', end: '', status: '', hw: '', sw: '', note: '', plan: '' };
 
       const aCell = getOrCreateCell(doc, rowEl, 'A', r, null);
       setCellInlineString(doc, aCell, data.item || '');
@@ -259,7 +284,12 @@
 
       const hCell = getOrCreateCell(doc, rowEl, 'H', r, '3');
       setCellInlineString(doc, hCell, data.note || '');
+
+      const iCell = getOrCreateCell(doc, rowEl, 'I', r, '3');
+      setCellInlineString(doc, iCell, data.plan || '');
     }
+
+    ensurePlanColumn(doc, rowByNum.get(1));
 
     const newXml = new XMLSerializer().serializeToString(doc);
     const zipOut = Object.assign({}, zipIn);
@@ -273,7 +303,7 @@
   // ---------- 資料庫工作表(已結案項目) ----------
 
   const ARCHIVE_SHEET_NAME = '資料庫';
-  const ARCHIVE_HEADERS = ['工作項目', '計畫開始時間', '計畫結束時間', '工時(天)', '狀態', '硬體作業人員', '軟體/電控作業人員', '備註', '結案日期'];
+  const ARCHIVE_HEADERS = ['工作項目', '計畫開始時間', '計畫結束時間', '工時(天)', '狀態', '硬體作業人員', '軟體/電控作業人員', '備註', '預計工作', '結案日期'];
   const REL_NS_URI = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
   const WORKSHEET_CT = 'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml';
 
@@ -282,6 +312,10 @@
     const ws = wb.Sheets[ARCHIVE_SHEET_NAME];
     if (!ws || !ws['!ref']) return [];
     const lastRow = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
+    // 依表頭找欄位,相容舊版資料庫(I 欄是結案日期、沒有預計工作)
+    const colOf = (name) => 'ABCDEFGHIJKL'.split('').find((c) => ws[`${c}1`] && ws[`${c}1`].v === name);
+    const closedCol = colOf('結案日期') || 'I';
+    const planCol = colOf('預計工作');
     const out = [];
     for (let r = 2; r <= lastRow; r++) {
       const get = (col) => {
@@ -303,14 +337,15 @@
         hw: get('F') != null ? String(get('F')) : '',
         sw: get('G') != null ? String(get('G')) : '',
         note: get('H') != null ? String(get('H')) : '',
-        closed: serialToISODate(get('I')),
+        plan: planCol && get(planCol) != null ? String(get(planCol)) : '',
+        closed: serialToISODate(get(closedCol)),
       });
     }
     return out;
   }
 
   function buildArchiveSheetXml(archiveRows, headers) {
-    const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+    const colLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     const textCell = (ref, text, style) =>
       text === '' || text == null
         ? ''
@@ -335,12 +370,13 @@
           textCell(`F${r}`, a.hw, 2) +
           textCell(`G${r}`, a.sw, 2) +
           textCell(`H${r}`, a.note, 3) +
-          numCell(`I${r}`, isoDateToSerial(a.closed), 11) +
+          textCell(`I${r}`, a.plan, 2) +
+          numCell(`J${r}`, isoDateToSerial(a.closed), 11) +
           `</row>`
         );
       })
       .join('');
-    const widths = [43, 19, 19, 10, 12, 30, 30, 30, 19];
+    const widths = [43, 19, 19, 10, 12, 30, 30, 30, 38, 19];
     const cols = widths
       .map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`)
       .join('');
@@ -398,7 +434,7 @@
       const wb = XLSX.read(originalBytes, { type: 'array', cellDates: false });
       const ws = wb.Sheets[CFG.SHEET_NAME];
       const listHeaders = COLS.map((c) => (ws && ws[`${c}1`] ? String(ws[`${c}1`].v) : ''));
-      if (listHeaders.every(Boolean)) headers = [...listHeaders, '結案日期'];
+      if (listHeaders.every(Boolean)) headers = [...listHeaders, '預計工作', '結案日期'];
     } catch (e) { /* 取不到表頭就用預設值 */ }
     const path = ensureSheetPath(zip, ARCHIVE_SHEET_NAME);
     zip[path] = new TextEncoder().encode(buildArchiveSheetXml(archiveRows, headers));
