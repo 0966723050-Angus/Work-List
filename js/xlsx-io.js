@@ -235,7 +235,7 @@
    * 將編輯後的資料列(rows,結構同 parseRows 回傳格式)套用到原始 xlsm bytes,
    * 回傳新的檔案 bytes(Uint8Array),可直接上傳回 Drive。
    */
-  function buildPatchedWorkbook(originalBytes, rows, archiveRows) {
+  function buildPatchedWorkbook(originalBytes, rows, archiveRows, roster) {
     const zipIn = fflate.unzipSync(new Uint8Array(originalBytes));
     const sheetBytes = zipIn[SHEET_XML_PATH];
     if (!sheetBytes) throw new Error('原始檔案缺少工作表 XML,無法寫入');
@@ -296,6 +296,7 @@
     zipOut[SHEET_XML_PATH] = new TextEncoder().encode(newXml);
 
     if (archiveRows) writeArchiveSheet(zipOut, originalBytes, archiveRows);
+    if (roster) writeRosterSheet(zipOut, roster);
 
     return fflate.zipSync(zipOut, { level: 6 });
   }
@@ -440,6 +441,47 @@
     zip[path] = new TextEncoder().encode(buildArchiveSheetXml(archiveRows, headers));
   }
 
+  // ---------- 人員名單工作表(人員下拉選單的選項) ----------
+
+  const ROSTER_SHEET_NAME = '人員';
+  const ROSTER_HEADERS = ['硬體作業人員', '軟體/電控作業人員'];
+
+  // 回傳 { hw: [], sw: [] };工作表不存在時回傳 null(由呼叫端以現有資料產生初始名單)
+  function parseRoster(bytes) {
+    const wb = XLSX.read(bytes, { type: 'array', cellDates: false });
+    const ws = wb.Sheets[ROSTER_SHEET_NAME];
+    if (!ws || !ws['!ref']) return null;
+    const lastRow = XLSX.utils.decode_range(ws['!ref']).e.r + 1;
+    const col = (letter) => {
+      const out = [];
+      for (let r = 2; r <= lastRow; r++) {
+        const c = ws[`${letter}${r}`];
+        const name = c && c.v != null ? String(c.v).trim() : '';
+        if (name && !out.includes(name)) out.push(name);
+      }
+      return out;
+    };
+    return { hw: col('A'), sw: col('B') };
+  }
+
+  function writeRosterSheet(zip, roster) {
+    const n = Math.max(roster.hw.length, roster.sw.length);
+    const textCell = (ref, text, style) =>
+      text ? `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(text)}</t></is></c>` : '';
+    let body = '';
+    for (let i = 0; i < n; i++) {
+      const r = i + 2;
+      body += `<row r="${r}">${textCell(`A${r}`, roster.hw[i], 2)}${textCell(`B${r}`, roster.sw[i], 2)}</row>`;
+    }
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<worksheet xmlns="${NS}" xmlns:r="${REL_NS_URI}">` +
+      `<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="20"/>` +
+      `<cols><col min="1" max="2" width="26" customWidth="1"/></cols>` +
+      `<sheetData><row r="1">${textCell('A1', ROSTER_HEADERS[0], 5)}${textCell('B1', ROSTER_HEADERS[1], 5)}</row>${body}</sheetData></worksheet>`;
+    zip[ensureSheetPath(zip, ROSTER_SHEET_NAME)] = new TextEncoder().encode(xml);
+  }
+
   // ---------- 權限工作表(誰進入編輯頁免輸入密碼) ----------
 
   const PERM_SHEET_NAME = '權限';
@@ -533,6 +575,7 @@
     fetchWorkbookBytes,
     parseRows,
     parseArchive,
+    parseRoster,
     parsePermissions,
     buildPermissionsWorkbook,
     fetchCurrentUserEmail,

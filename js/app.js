@@ -5,6 +5,7 @@
 
   let originalBytes = null;
   let rows = []; // { row, item, start, end, duration, status, hw, sw, note }
+  let roster = { hw: [], sw: [] }; // 人員下拉選單的選項(存於「人員」工作表)
   let archive = []; // 「資料庫」工作表:已結案項目 { item, start, end, duration, status, hw, sw, note, closed }
   let editMode = false;
   let saving = false;
@@ -231,6 +232,7 @@
       rows = XlsxIO.parseRows(originalBytes);
       archive = XlsxIO.parseArchive(originalBytes);
       permissions = XlsxIO.parsePermissions(originalBytes);
+      const savedRoster = XlsxIO.parseRoster(originalBytes);
       await resolveCurrentUser(token);
       // 舊資料中仍留在 List 的「完工」項目,改歸入資料庫(下次儲存時才會寫回雲端)
       rows = rows.filter((r) => {
@@ -239,6 +241,8 @@
         return false;
       });
       sortRowsByStartDate(rows); // 一律依開始日期由近到遠顯示,不受 Excel 實體列順序影響
+      // 檔案裡還沒有「人員」工作表時,先用現有資料出現過的人名當作初始名單(下次儲存寫入)
+      roster = savedRoster || { hw: namesFromData('hw'), sw: namesFromData('sw') };
       renderTable();
       renderGantt();
       const now = new Date();
@@ -476,11 +480,19 @@
 
   const splitNames = (str) => String(str || '').split(/[,，、;；]+/).map((n) => n.trim()).filter(Boolean);
 
-  // 選項來自目前清單與資料庫中,該欄位出現過的所有人名
-  function peoplePool(key) {
+  function namesFromData(key) {
     const set = new Set();
     [...rows, ...archive].forEach((r) => splitNames(r[key]).forEach((n) => set.add(n)));
     return [...set].sort((a, b) => a.localeCompare(b));
+  }
+
+  // 把所有項目(清單 + 資料庫)中某欄位的人名 oldName 改成 newName
+  function renamePerson(key, oldName, newName) {
+    [...rows, ...archive].forEach((r) => {
+      const names = splitNames(r[key]);
+      if (!names.includes(oldName)) return;
+      r[key] = [...new Set(names.map((n) => (n === oldName ? newName : n)))].join(',');
+    });
   }
 
   function setupPeopleField(field, row) {
@@ -489,23 +501,59 @@
     const panel = field.querySelector('.people-panel');
     const toggle = field.querySelector('.people-toggle');
 
+    function setSelected(names, options) {
+      input.value = options.filter((n) => names.includes(n)).join(',');
+      row[key] = input.value;
+    }
+
     function renderPanel() {
       const current = splitNames(input.value);
-      const options = [...new Set([...peoplePool(key), ...current])];
-      panel.innerHTML = options.length ? '' : '<div class="people-empty">尚無可選人員,請先手動輸入</div>';
+      const list = roster[key];
+      // 已填在欄位中、但不在名單內的人名也列出,方便取消勾選
+      const options = [...new Set([...list, ...current])];
+      panel.innerHTML = '<div class="people-list"></div><div class="people-add"><input type="text" placeholder="新增人員(可用逗號一次多筆)"><button type="button" class="btn btn-primary btn-sm">＋</button></div>';
+      const listEl = panel.querySelector('.people-list');
+      if (!options.length) listEl.innerHTML = '<div class="people-empty">名單是空的,請在下方新增人員</div>';
       options.forEach((name) => {
-        const label = document.createElement('label');
+        const inRoster = list.includes(name);
+        const label = document.createElement('div');
         label.className = 'people-option';
-        label.innerHTML = `<input type="checkbox"${current.includes(name) ? ' checked' : ''}><span>${escapeHtml(name)}</span>`;
+        label.innerHTML = `<label><input type="checkbox"${current.includes(name) ? ' checked' : ''}><span>${escapeHtml(name)}</span></label>` +
+          (inRoster ? '<button type="button" class="people-act" data-a="rename" aria-label="改名">✎</button><button type="button" class="people-act" data-a="del" aria-label="從名單移除">✕</button>' : '');
         label.querySelector('input').addEventListener('change', (e) => {
           const names = splitNames(input.value).filter((n) => n !== name);
           if (e.target.checked) names.push(name);
-          // 依選項順序輸出,維持穩定
-          input.value = options.filter((n) => names.includes(n)).join(',');
-          row[key] = input.value;
+          setSelected(names, options);
         });
-        panel.appendChild(label);
+        if (inRoster) {
+          label.querySelector('[data-a="rename"]').addEventListener('click', () => {
+            const next = (prompt(`將「${name}」改名為(會同步更新所有項目與資料庫):`, name) || '').trim();
+            if (!next || next === name) return;
+            if (/[,\uFF0C\u3001;\uFF1B]/.test(next)) { toast('人名不可包含逗號或分號', true); return; }
+            roster[key] = [...new Set(list.map((n) => (n === name ? next : n)))];
+            renamePerson(key, name, next);
+            renderTable();
+            toast(`已將「${name}」改名為「${next}」,按「儲存」寫回雲端`);
+          });
+          label.querySelector('[data-a="del"]').addEventListener('click', () => {
+            roster[key] = list.filter((n) => n !== name);
+            renderPanel();
+          });
+        }
+        listEl.appendChild(label);
       });
+      const addInput = panel.querySelector('.people-add input');
+      const addNames = () => {
+        const added = splitNames(addInput.value);
+        if (!added.length) return;
+        added.forEach((n) => { if (!roster[key].includes(n)) roster[key].push(n); });
+        const all = [...new Set([...roster[key], ...splitNames(input.value)])];
+        setSelected([...splitNames(input.value), ...added], all);
+        renderPanel();
+        panel.querySelector('.people-add input').focus();
+      };
+      panel.querySelector('.people-add button').addEventListener('click', addNames);
+      addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addNames(); } });
     }
 
     toggle.addEventListener('click', (e) => {
@@ -690,12 +738,13 @@
       // 依排序後的順序,重新指定實際要寫入的 Excel 列號,讓排序結果在存檔、
       // 重新整理後仍然維持(否則下次讀取又會照 Excel 原本的實體列順序顯示)
       cleanRows.forEach((r, i) => { r.row = CFG.MIN_ROW + i; });
-      const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows, archiveOut);
+      const patchedBytes = XlsxIO.buildPatchedWorkbook(originalBytes, cleanRows, archiveOut, roster);
       const token = await DriveAuth.ensureAccessToken();
       await XlsxIO.uploadWorkbook(patchedBytes, token);
       originalBytes = patchedBytes;
       rows = XlsxIO.parseRows(patchedBytes);
       archive = XlsxIO.parseArchive(patchedBytes);
+      roster = XlsxIO.parseRoster(patchedBytes) || roster;
       sortRowsByStartDate(rows);
       toast('已成功儲存至 Google Drive');
       exitEditMode();
